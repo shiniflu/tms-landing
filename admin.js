@@ -68,10 +68,18 @@
     const tok  = $('#loginToken').value.trim();
     const remember = $('#loginRemember').checked;
 
-    if (pass !== ADMIN_PASSWORD) {
-      return showLoginError('Неверный пароль админки');
+    console.log('[admin] login attempt, password length:', pass.length, 'token prefix:', tok.slice(0, 8));
+
+    if (!pass) {
+      return showLoginError('Введите пароль админки');
     }
-    if (!tok || (!tok.startsWith('ghp_') && !tok.startsWith('github_pat_'))) {
+    if (pass !== ADMIN_PASSWORD) {
+      return showLoginError('Неверный пароль админки. По умолчанию: admin123');
+    }
+    if (!tok) {
+      return showLoginError('Введите GitHub токен');
+    }
+    if (!tok.startsWith('ghp_') && !tok.startsWith('github_pat_')) {
       return showLoginError('Неверный формат токена. Должен начинаться с ghp_ или github_pat_');
     }
 
@@ -80,7 +88,21 @@
     if (remember) localStorage.setItem('admin_token', tok);
     else localStorage.removeItem('admin_token');
 
-    await enterEditor();
+    showLoginError('⏳ Проверяем токен...');
+    loginError.style.background = '#dbeafe';
+    loginError.style.color = '#1e40af';
+
+    try {
+      await enterEditor();
+    } catch (err) {
+      // restore error styles
+      loginError.style.background = '';
+      loginError.style.color = '';
+      // bring login back if editor failed to load
+      loginScreen.hidden = false;
+      editorScreen.hidden = true;
+      showLoginError('Ошибка GitHub API: ' + err.message + '. Проверьте токен и доступ к репозиторию.');
+    }
   }
 
   function logout() {
@@ -96,16 +118,11 @@
   }
 
   async function enterEditor() {
+    // load FIRST, then switch screens (so login error UI can stay if it fails)
+    await loadContent();
     loginScreen.hidden = true;
     editorScreen.hidden = false;
     repoBadge.textContent = `${REPO_OWNER}/${REPO_NAME}`;
-
-    try {
-      await loadContent();
-    } catch (e) {
-      showToast('Ошибка: ' + e.message, 'error');
-      console.error(e);
-    }
   }
 
   // ============ GITHUB API ============

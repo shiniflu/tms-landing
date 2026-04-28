@@ -7,9 +7,18 @@
   'use strict';
 
   // ============ CONFIG ============
-  // Encrypted GitHub token. Generated via /encrypt.html.
-  // Empty = legacy mode (user must paste token manually).
-  const ENCRYPTED_TOKEN = 'Dybduqq/mTxnhAOY3Uu4DJ+jXheIl65ftz0EDew9bpRwVtXqzRZDQS7ZQi3c9hjq/EWU2putBmfs2Q37aogv4C4KA5FpeINS0n4qdAQcZulWQjkS';
+  // Mode:
+  //   'github'    — saves directly via GitHub API (needs ENCRYPTED_TOKEN)
+  //   'manual'    — copies JSON + opens GitHub edit page (no token, recommended)
+  const SAVE_MODE = 'manual';
+
+  // Plain-text password (admin-only access). Change anytime by editing this file.
+  // Note: this is client-side, so it's just a "do-not-disturb" lock — anyone with
+  // GitHub repo write access can edit content.json directly anyway.
+  const ADMIN_PASSWORD = 'admin123';
+
+  // Encrypted token (used only in 'github' mode)
+  const ENCRYPTED_TOKEN = '';
 
   // GitHub repo info
   const REPO_OWNER = 'shiniflu';
@@ -50,8 +59,8 @@
     const tokenLabel = $('#loginTokenLabel');
     const helpBlock = $('#loginHelp');
 
-    // If token is encrypted in code, hide token input — only password is needed
-    if (ENCRYPTED_TOKEN) {
+    // In 'manual' mode or with encrypted token — hide GitHub token field
+    if (SAVE_MODE === 'manual' || ENCRYPTED_TOKEN) {
       if (tokenField) tokenField.required = false;
       if (tokenLabel) tokenLabel.style.display = 'none';
       if (helpBlock) helpBlock.style.display = 'none';
@@ -68,24 +77,40 @@
       });
     }
 
-    // restore token if remembered
-    const saved = localStorage.getItem('admin_token');
-    const savedAuth = sessionStorage.getItem('admin_auth') === '1';
-    if (saved && savedAuth) {
-      token = saved;
-      showLoginError('⏳ Авто-вход...');
-      loginError.style.background = '#dbeafe';
-      loginError.style.color = '#1e40af';
-      enterEditor().catch(err => {
-        console.error(err);
-        sessionStorage.removeItem('admin_auth');
-        localStorage.removeItem('admin_token');
-        loginScreen.hidden = false;
-        editorScreen.hidden = true;
-        loginError.style.background = '';
-        loginError.style.color = '';
-        showLoginError('Авто-вход не удался: ' + err.message);
-      });
+    // Auto-login if previously authenticated
+    const savedAuth = sessionStorage.getItem('admin_auth') === '1' || localStorage.getItem('admin_auth') === '1';
+    if (savedAuth) {
+      if (SAVE_MODE === 'manual') {
+        // No token needed — go straight in
+        showLoginError('⏳ Загружаем...');
+        loginError.style.background = '#dbeafe';
+        loginError.style.color = '#1e40af';
+        enterEditor().catch(err => {
+          console.error(err);
+          loginError.style.background = '';
+          loginError.style.color = '';
+          showLoginError('Ошибка загрузки: ' + err.message);
+        });
+      } else {
+        const saved = localStorage.getItem('admin_token');
+        if (saved) {
+          token = saved;
+          showLoginError('⏳ Авто-вход...');
+          loginError.style.background = '#dbeafe';
+          loginError.style.color = '#1e40af';
+          enterEditor().catch(err => {
+            console.error(err);
+            sessionStorage.removeItem('admin_auth');
+            localStorage.removeItem('admin_auth');
+            localStorage.removeItem('admin_token');
+            loginScreen.hidden = false;
+            editorScreen.hidden = true;
+            loginError.style.background = '';
+            loginError.style.color = '';
+            showLoginError('Авто-вход не удался: ' + err.message);
+          });
+        }
+      }
     }
 
     loginForm.addEventListener('submit', handleLogin);
@@ -106,6 +131,28 @@
 
     if (!pass) return showLoginError('Введите пароль');
 
+    // ----- MANUAL MODE: just check password and load content publicly -----
+    if (SAVE_MODE === 'manual') {
+      if (pass !== ADMIN_PASSWORD) return showLoginError('Неверный пароль');
+
+      sessionStorage.setItem('admin_auth', '1');
+      if (remember) localStorage.setItem('admin_auth', '1');
+      else localStorage.removeItem('admin_auth');
+
+      showLoginError('⏳ Загружаем...');
+      loginError.style.background = '#dbeafe';
+      loginError.style.color = '#1e40af';
+      try {
+        await enterEditor();
+      } catch (err) {
+        loginError.style.background = '';
+        loginError.style.color = '';
+        showLoginError('Ошибка загрузки: ' + err.message);
+      }
+      return;
+    }
+
+    // ----- GITHUB MODE: decrypt or paste token -----
     let tok;
 
     if (ENCRYPTED_TOKEN) {
@@ -176,6 +223,7 @@
   function logout() {
     token = '';
     sessionStorage.removeItem('admin_auth');
+    localStorage.removeItem('admin_auth');
     localStorage.removeItem('admin_token');
     location.reload();
   }
@@ -228,6 +276,22 @@
   }
 
   async function loadContent(showMsg = false) {
+    if (SAVE_MODE === 'manual') {
+      // Public fetch — no auth needed
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), 12000);
+      try {
+        const url = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}/${FILE_PATH}?nocache=${Date.now()}`;
+        const res = await fetch(url, { signal: ctl.signal });
+        if (!res.ok) throw new Error(`Не удалось загрузить content.json (HTTP ${res.status})`);
+        content = await res.json();
+        renderUI();
+        if (showMsg) showToast('Перезагружено с GitHub', 'success');
+      } finally {
+        clearTimeout(t);
+      }
+      return;
+    }
     const data = await gh(`/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}?ref=${REPO_BRANCH}`);
     fileSha = data.sha;
     const text = decodeBase64Utf8(data.content);
@@ -237,6 +301,8 @@
   }
 
   async function handleSave() {
+    if (SAVE_MODE === 'manual') return handleSaveManual();
+
     const btn = $('#saveBtn');
     btn.disabled = true;
     const orig = btn.textContent;
@@ -262,6 +328,73 @@
       btn.disabled = false;
       btn.textContent = orig;
     }
+  }
+
+  async function handleSaveManual() {
+    const json = JSON.stringify(content, null, 2) + '\n';
+
+    // 1. Copy to clipboard
+    try {
+      await navigator.clipboard.writeText(json);
+    } catch (e) {
+      // fallback
+      const ta = document.createElement('textarea');
+      ta.value = json; document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); ta.remove();
+    }
+
+    // 2. Show modal with instructions
+    showSaveModal(json);
+  }
+
+  function showSaveModal(json) {
+    const editUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/edit/${REPO_BRANCH}/${FILE_PATH}`;
+
+    let m = document.getElementById('saveModal');
+    if (m) m.remove();
+
+    m = document.createElement('div');
+    m.id = 'saveModal';
+    m.className = 'save-modal';
+    m.innerHTML = `
+      <div class="save-modal__backdrop"></div>
+      <div class="save-modal__box">
+        <h2>📋 JSON скопирован в буфер</h2>
+        <p>Чтобы опубликовать изменения на сайте, выполните 3 шага:</p>
+        <ol class="save-steps">
+          <li><b>Откройте редактор файла на GitHub</b><br>
+            <a href="${editUrl}" target="_blank" rel="noopener" class="btn btn--primary" id="openGhBtn">↗ Открыть content.json на GitHub</a>
+          </li>
+          <li><b>Выделите всё (Ctrl+A) и вставьте (Ctrl+V)</b><br>
+            <span style="color:#475569;font-size:13px">Замените всё содержимое файла на скопированный JSON</span>
+          </li>
+          <li><b>Нажмите зелёную кнопку «Commit changes...»</b> внизу страницы<br>
+            <span style="color:#475569;font-size:13px">Сайт обновится автоматически через ~30 секунд</span>
+          </li>
+        </ol>
+        <div class="save-modal__alt">
+          <button class="btn btn--ghost btn--sm" id="downloadBtn">💾 Скачать как файл</button>
+          <button class="btn btn--ghost btn--sm" id="copyAgainBtn">📋 Скопировать снова</button>
+        </div>
+        <button class="save-modal__close" id="closeModalBtn">Закрыть</button>
+      </div>
+    `;
+    document.body.appendChild(m);
+
+    document.getElementById('closeModalBtn').onclick = () => m.remove();
+    m.querySelector('.save-modal__backdrop').onclick = () => m.remove();
+    document.getElementById('downloadBtn').onclick = () => {
+      const blob = new Blob([json], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'content.json';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    };
+    document.getElementById('copyAgainBtn').onclick = async () => {
+      await navigator.clipboard.writeText(json);
+      showToast('Скопировано', 'success');
+    };
   }
 
   // base64 with utf-8 support

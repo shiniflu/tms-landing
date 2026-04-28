@@ -261,6 +261,32 @@ a { color: inherit; }
 
 .metrics-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 
+/* ===================== SAVE MODAL ===================== */
+.save-modal { position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.save-modal__backdrop { position: absolute; inset: 0; background: rgba(15,23,42,.6); backdrop-filter: blur(2px); }
+.save-modal__box {
+  position: relative; background: #fff; border-radius: 16px; padding: 36px;
+  max-width: 560px; width: 100%; box-shadow: var(--shadow-lg);
+  max-height: 90vh; overflow-y: auto;
+}
+.save-modal__box h2 { font-size: 22px; font-weight: 800; margin-bottom: 8px; }
+.save-modal__box > p { color: var(--text-soft); margin-bottom: 18px; }
+.save-steps { list-style: none; counter-reset: s; display: flex; flex-direction: column; gap: 18px; margin-bottom: 24px; }
+.save-steps li { counter-increment: s; padding-left: 44px; position: relative; line-height: 1.6; }
+.save-steps li::before {
+  content: counter(s); position: absolute; left: 0; top: 0;
+  width: 30px; height: 30px; border-radius: 50%; background: var(--primary); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px;
+}
+.save-steps b { display: block; margin-bottom: 6px; }
+.save-steps a.btn { margin-top: 8px; }
+.save-modal__alt { display: flex; gap: 10px; padding-top: 18px; border-top: 1px solid var(--border); }
+.save-modal__close {
+  display: block; margin: 18px auto 0; padding: 8px 16px;
+  color: var(--text-mute); font-size: 13px; font-weight: 500;
+}
+.save-modal__close:hover { color: var(--text); }
+
 /* ===================== TOAST ===================== */
 .toast {
   position: fixed; bottom: 24px; right: 24px;

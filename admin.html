@@ -22,25 +22,25 @@
 
     <form id="loginForm" class="login__form">
       <label>
-        <span>Пароль админки</span>
+        <span>Пароль</span>
         <input type="password" id="loginPassword" required autocomplete="current-password" placeholder="••••••••" />
       </label>
 
-      <label>
+      <label id="loginTokenLabel">
         <span>GitHub Personal Access Token <a href="https://github.com/settings/tokens/new?description=LogisTMS%20Admin&scopes=repo" target="_blank" rel="noopener" class="link">создать</a></span>
-        <input type="password" id="loginToken" required autocomplete="off" placeholder="ghp_..." />
+        <input type="password" id="loginToken" autocomplete="off" placeholder="ghp_..." />
       </label>
 
       <label class="check">
-        <input type="checkbox" id="loginRemember" />
-        <span>Запомнить токен в этом браузере</span>
+        <input type="checkbox" id="loginRemember" checked />
+        <span>Запомнить меня в этом браузере</span>
       </label>
 
       <button type="submit" class="btn btn--primary">Войти</button>
       <p class="login__error" id="loginError" hidden></p>
     </form>
 
-    <details class="login__help">
+    <details class="login__help" id="loginHelp">
       <summary>Как получить GitHub токен?</summary>
       <ol>
         <li>Откройте <a href="https://github.com/settings/tokens/new?description=LogisTMS%20Admin&scopes=repo" target="_blank" rel="noopener">эту ссылку</a></li>

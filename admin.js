@@ -7,8 +7,9 @@
   'use strict';
 
   // ============ CONFIG ============
-  // Default password — change this and re-deploy
-  const ADMIN_PASSWORD = 'admin123';
+  // Encrypted GitHub token. Generated via /encrypt.html.
+  // Empty = legacy mode (user must paste token manually).
+  const ENCRYPTED_TOKEN = '';
 
   // GitHub repo info
   const REPO_OWNER = 'shiniflu';
@@ -45,12 +46,31 @@
   init();
 
   function init() {
+    const tokenField = $('#loginToken');
+    const tokenLabel = $('#loginTokenLabel');
+    const helpBlock = $('#loginHelp');
+
+    // If token is encrypted in code, hide token input — only password is needed
+    if (ENCRYPTED_TOKEN) {
+      if (tokenField) tokenField.required = false;
+      if (tokenLabel) tokenLabel.style.display = 'none';
+      if (helpBlock) helpBlock.style.display = 'none';
+    }
+
     // restore token if remembered
     const saved = localStorage.getItem('admin_token');
     const savedAuth = sessionStorage.getItem('admin_auth') === '1';
     if (saved && savedAuth) {
       token = saved;
-      enterEditor();
+      enterEditor().catch(err => {
+        console.error(err);
+        // fall back to login if token expired
+        sessionStorage.removeItem('admin_auth');
+        localStorage.removeItem('admin_token');
+        loginScreen.hidden = false;
+        editorScreen.hidden = true;
+        showLoginError('Токен устарел. Войдите снова.');
+      });
     }
 
     loginForm.addEventListener('submit', handleLogin);
@@ -63,24 +83,43 @@
   async function handleLogin(e) {
     e.preventDefault();
     loginError.hidden = true;
+    loginError.style.background = '';
+    loginError.style.color = '';
 
     const pass = $('#loginPassword').value;
-    const tok  = $('#loginToken').value.trim();
     const remember = $('#loginRemember').checked;
 
-    console.log('[admin] login attempt, password length:', pass.length, 'token prefix:', tok.slice(0, 8));
+    if (!pass) return showLoginError('Введите пароль');
 
-    if (!pass) {
-      return showLoginError('Введите пароль админки');
-    }
-    if (pass !== ADMIN_PASSWORD) {
-      return showLoginError('Неверный пароль админки. По умолчанию: admin123');
-    }
-    if (!tok) {
-      return showLoginError('Введите GitHub токен');
-    }
-    if (!tok.startsWith('ghp_') && !tok.startsWith('github_pat_')) {
-      return showLoginError('Неверный формат токена. Должен начинаться с ghp_ или github_pat_');
+    let tok;
+
+    if (ENCRYPTED_TOKEN) {
+      // Decrypt embedded token using password
+      showLoginError('⏳ Расшифровываем...');
+      loginError.style.background = '#dbeafe';
+      loginError.style.color = '#1e40af';
+
+      try {
+        tok = await decryptToken(ENCRYPTED_TOKEN, pass);
+      } catch (err) {
+        loginError.style.background = '';
+        loginError.style.color = '';
+        return showLoginError('Неверный пароль');
+      }
+
+      if (!tok || (!tok.startsWith('ghp_') && !tok.startsWith('github_pat_'))) {
+        loginError.style.background = '';
+        loginError.style.color = '';
+        return showLoginError('Неверный пароль');
+      }
+    } else {
+      // Legacy: user pastes token manually
+      const manualTok = $('#loginToken').value.trim();
+      if (!manualTok) return showLoginError('Введите GitHub токен');
+      if (!manualTok.startsWith('ghp_') && !manualTok.startsWith('github_pat_')) {
+        return showLoginError('Неверный формат токена. Должен начинаться с ghp_ или github_pat_');
+      }
+      tok = manualTok;
     }
 
     token = tok;
@@ -88,21 +127,35 @@
     if (remember) localStorage.setItem('admin_token', tok);
     else localStorage.removeItem('admin_token');
 
-    showLoginError('⏳ Проверяем токен...');
+    showLoginError('⏳ Загружаем...');
     loginError.style.background = '#dbeafe';
     loginError.style.color = '#1e40af';
 
     try {
       await enterEditor();
     } catch (err) {
-      // restore error styles
       loginError.style.background = '';
       loginError.style.color = '';
-      // bring login back if editor failed to load
       loginScreen.hidden = false;
       editorScreen.hidden = true;
-      showLoginError('Ошибка GitHub API: ' + err.message + '. Проверьте токен и доступ к репозиторию.');
+      showLoginError('Ошибка GitHub API: ' + err.message + '. Возможно, токен устарел.');
     }
+  }
+
+  async function decryptToken(b64, password) {
+    const data = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    const salt = data.slice(0, 16);
+    const iv   = data.slice(16, 28);
+    const ct   = data.slice(28);
+
+    const enc = new TextEncoder();
+    const km = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
+    const key = await crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt, iterations: 250000, hash: 'SHA-256' },
+      km, { name: 'AES-GCM', length: 256 }, false, ['decrypt']
+    );
+    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+    return new TextDecoder().decode(plain);
   }
 
   function logout() {

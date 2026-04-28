@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Шифрование токена · LogisTMS</title>
+  <meta name="robots" content="noindex" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', system-ui, sans-serif; background: #f8fafc; padding: 40px 20px; min-height: 100vh; }
+    .box { max-width: 720px; margin: 0 auto; background: #fff; padding: 40px; border-radius: 16px; box-shadow: 0 4px 24px rgba(0,0,0,.08); }
+    h1 { font-size: 24px; font-weight: 800; margin-bottom: 8px; color: #0f172a; }
+    .lead { color: #475569; margin-bottom: 24px; line-height: 1.6; }
+    .step { padding: 16px; background: #f8fafc; border-left: 3px solid #1e40af; border-radius: 8px; margin-bottom: 16px; }
+    .step b { color: #1e40af; font-size: 13px; text-transform: uppercase; letter-spacing: .05em; }
+    .step p { color: #334155; margin-top: 4px; font-size: 14px; line-height: 1.6; }
+    label { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: #475569; }
+    input, textarea { width: 100%; padding: 12px 14px; border: 1.5px solid #e2e8f0; border-radius: 8px; font-size: 14px; font-family: inherit; margin-bottom: 18px; }
+    textarea { font-family: 'Courier New', monospace; min-height: 110px; resize: vertical; }
+    input:focus, textarea:focus { outline: none; border-color: #1e40af; box-shadow: 0 0 0 4px rgba(30,64,175,.1); }
+    button { background: #1e40af; color: #fff; padding: 12px 22px; border-radius: 8px; border: none; font-weight: 600; font-size: 14px; cursor: pointer; }
+    button:hover { background: #1e3a8a; }
+    .out { margin-top: 24px; padding: 16px; background: #0f172a; color: #10b981; border-radius: 8px; font-family: 'Courier New', monospace; font-size: 12px; word-break: break-all; line-height: 1.6; max-height: 200px; overflow-y: auto; }
+    .copy { background: #10b981; margin-top: 10px; }
+    .copy:hover { background: #059669; }
+    .warn { background: #fef3c7; border-left: 3px solid #f59e0b; padding: 14px; border-radius: 8px; margin: 16px 0; font-size: 13px; color: #92400e; line-height: 1.6; }
+    code { background: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-family: 'Courier New', monospace; font-size: 12px; }
+    a { color: #1e40af; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>🔐 Шифрование GitHub токена</h1>
+    <p class="lead">Эта утилита зашифрует ваш GitHub токен паролем. Зашифрованный блок безопасно хранить в публичном коде — без пароля его нельзя расшифровать.</p>
+
+    <div class="step">
+      <b>Шаг 1.</b>
+      <p>Создайте GitHub токен: <a href="https://github.com/settings/tokens/new?description=LogisTMS&scopes=repo" target="_blank">тут</a> (scope <code>repo</code>, expiration — год или больше)</p>
+    </div>
+
+    <div class="step">
+      <b>Шаг 2.</b>
+      <p>Введите пароль для админки и токен ниже, нажмите «Зашифровать».</p>
+    </div>
+
+    <div class="step">
+      <b>Шаг 3.</b>
+      <p>Скопируйте полученный блок и вставьте в файл <code>admin.js</code> (строка <code>ENCRYPTED_TOKEN = '...'</code>), сделайте git push.</p>
+    </div>
+
+    <div class="warn">
+      ⚠️ <b>Важно:</b> Запомните пароль! Без него нельзя восстановить токен. При утере — создайте новый токен и зашифруйте заново.
+    </div>
+
+    <label>Пароль для входа в админку</label>
+    <input type="text" id="password" placeholder="придумайте надёжный пароль" autocomplete="off" />
+
+    <label>GitHub токен (ghp_... или github_pat_...)</label>
+    <input type="text" id="token" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off" />
+
+    <button onclick="encrypt()">🔐 Зашифровать</button>
+
+    <div id="result" style="display:none">
+      <h3 style="margin-top:28px; margin-bottom:10px; font-size:16px">Зашифрованный блок:</h3>
+      <div class="out" id="encrypted"></div>
+      <button class="copy" onclick="copyResult()">📋 Скопировать</button>
+      <p style="margin-top:14px; color:#475569; font-size:13px; line-height:1.6;">Откройте <code>admin.js</code>, найдите строку <code>const ENCRYPTED_TOKEN = '...'</code> и замените её на:<br><code id="snippet"></code></p>
+    </div>
+  </div>
+
+<script>
+async function encrypt() {
+  const password = document.getElementById('password').value;
+  const token = document.getElementById('token').value.trim();
+
+  if (!password || password.length < 4) { alert('Введите пароль (минимум 4 символа)'); return; }
+  if (!token.startsWith('ghp_') && !token.startsWith('github_pat_')) { alert('Токен должен начинаться с ghp_ или github_pat_'); return; }
+
+  const enc = new TextEncoder();
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv   = crypto.getRandomValues(new Uint8Array(12));
+
+  const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt, iterations: 250000, hash: 'SHA-256' },
+    keyMaterial, { name: 'AES-GCM', length: 256 }, false, ['encrypt']
+  );
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(token));
+
+  // pack salt + iv + ciphertext as base64
+  const out = new Uint8Array(salt.length + iv.length + ciphertext.byteLength);
+  out.set(salt, 0);
+  out.set(iv, salt.length);
+  out.set(new Uint8Array(ciphertext), salt.length + iv.length);
+  const b64 = btoa(String.fromCharCode(...out));
+
+  document.getElementById('encrypted').textContent = b64;
+  document.getElementById('snippet').textContent = `const ENCRYPTED_TOKEN = '${b64}';`;
+  document.getElementById('result').style.display = 'block';
+}
+
+function copyResult() {
+  const txt = document.getElementById('snippet').textContent;
+  navigator.clipboard.writeText(txt).then(() => alert('Скопировано! Вставьте в admin.js'));
+}
+</script>
+</body>
+</html>

@@ -9,7 +9,7 @@
   // ============ CONFIG ============
   // Encrypted GitHub token. Generated via /encrypt.html.
   // Empty = legacy mode (user must paste token manually).
-  const ENCRYPTED_TOKEN = '';
+  const ENCRYPTED_TOKEN = 'Dybduqq/mTxnhAOY3Uu4DJ+jXheIl65ftz0EDew9bpRwVtXqzRZDQS7ZQi3c9hjq/EWU2putBmfs2Q37aogv4C4KA5FpeINS0n4qdAQcZulWQjkS';
 
   // GitHub repo info
   const REPO_OWNER = 'shiniflu';

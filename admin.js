@@ -57,19 +57,34 @@
       if (helpBlock) helpBlock.style.display = 'none';
     }
 
+    // Show reset button always (helps when stuck)
+    const resetBtn = $('#resetBtn');
+    if (resetBtn) {
+      resetBtn.style.display = 'inline-block';
+      resetBtn.addEventListener('click', () => {
+        sessionStorage.clear();
+        localStorage.clear();
+        location.reload();
+      });
+    }
+
     // restore token if remembered
     const saved = localStorage.getItem('admin_token');
     const savedAuth = sessionStorage.getItem('admin_auth') === '1';
     if (saved && savedAuth) {
       token = saved;
+      showLoginError('⏳ Авто-вход...');
+      loginError.style.background = '#dbeafe';
+      loginError.style.color = '#1e40af';
       enterEditor().catch(err => {
         console.error(err);
-        // fall back to login if token expired
         sessionStorage.removeItem('admin_auth');
         localStorage.removeItem('admin_token');
         loginScreen.hidden = false;
         editorScreen.hidden = true;
-        showLoginError('Токен устарел. Войдите снова.');
+        loginError.style.background = '';
+        loginError.style.color = '';
+        showLoginError('Авто-вход не удался: ' + err.message);
       });
     }
 
@@ -181,18 +196,33 @@
   // ============ GITHUB API ============
   async function gh(path, options = {}) {
     const url = `https://api.github.com${path}`;
-    const res = await fetch(url, {
-      ...options,
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Accept': 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-        ...(options.headers || {})
-      }
-    });
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 15000);
+    let res;
+    try {
+      res = await fetch(url, {
+        ...options,
+        signal: ctl.signal,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+          ...(options.headers || {})
+        }
+      });
+    } catch (e) {
+      if (e.name === 'AbortError') throw new Error('GitHub API не отвечает (таймаут 15с). Проверьте интернет.');
+      throw new Error('Сеть: ' + e.message);
+    } finally {
+      clearTimeout(t);
+    }
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.message || `HTTP ${res.status}`);
+      let msg = `HTTP ${res.status}`;
+      try { const err = await res.json(); msg = err.message || msg; } catch {}
+      if (res.status === 401) msg = 'Токен недействителен или отозван (Bad credentials). Создайте новый и зашифруйте заново.';
+      if (res.status === 403) msg = 'Нет доступа к репозиторию или превышен лимит. Проверьте scope=repo у токена.';
+      if (res.status === 404) msg = 'Репозиторий или файл не найден. Проверьте REPO_OWNER/REPO_NAME в admin.js.';
+      throw new Error(msg);
     }
     return res.json();
   }

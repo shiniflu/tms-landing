@@ -1,5 +1,5 @@
 /* ===========================================================
-   LogisTMS Landing — data-driven renderer
+   Кругорейс Landing — data-driven renderer
    =========================================================== */
 
 (async function () {
@@ -17,7 +17,7 @@
   }
 
   // ---------- Apply meta ----------
-  document.title = content.site.title || 'LogisTMS';
+  document.title = content.site.title || 'Кругорейс';
   document.getElementById('metaDescription')?.setAttribute('content', content.site.description || '');
   document.getElementById('ogTitle')?.setAttribute('content', content.site.title || '');
   document.getElementById('ogDescription')?.setAttribute('content', content.site.description || '');

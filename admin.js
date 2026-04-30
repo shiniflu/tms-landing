@@ -1,5 +1,5 @@
 /* ===========================================================
-   LogisTMS Admin — visual content editor
+   Кругорейс Admin — visual content editor
    Saves content.json to GitHub via API
    =========================================================== */
 

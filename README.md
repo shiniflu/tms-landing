@@ -1,4 +1,4 @@
-# LogisTMS — лендинг + админка
+# Кругорейс — лендинг + админка
 
 Готовый прототип лендинга с **визуальной админкой**. Целевой рынок — Узбекистан.
 
@@ -59,7 +59,7 @@ tms-landing/
 ## 🔐 Получить GitHub токен
 
 1. Откройте https://github.com/settings/tokens/new
-2. **Note:** `LogisTMS Admin`
+2. **Note:** `Кругорейс Admin`
 3. **Expiration:** на год или без срока
 4. **Scopes:** только `repo`
 5. Generate → скопируйте токен `ghp_...`
@@ -145,7 +145,7 @@ git push
 ## 🎯 Что осталось доделать перед production
 
 - [ ] Заменить пароль админки на свой
-- [ ] Настроить кастомный домен (logistms.uz) в Settings → Pages
+- [ ] Настроить кастомный домен (krugoreys.uz) в Settings → Pages
 - [ ] Добавить Google Analytics, Meta Pixel, Яндекс.Метрику
 - [ ] Заполнить webhookUrl для CRM
 - [ ] Загрузить реальные логотипы клиентов (заменить текстовые в content.json)

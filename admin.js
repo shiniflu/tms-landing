@@ -51,6 +51,11 @@
   const repoBadge = $('#repoBadge');
   const toast = $('#toast');
 
+  // ============ PREVIEW STATE ============
+  let previewRebuildTimer = null;
+  let cachedScript = '';
+  let cachedStyles = '';
+
   // ============ INIT ============
   init();
 
@@ -409,8 +414,142 @@
   function renderUI() {
     renderBlockList();
     renderSiteFields();
+    rebuildPreview();
+    bindPreviewControls();
     if (activeBlock) selectBlock(activeBlock);
   }
+
+  // ============ LIVE PREVIEW (iframe) ============
+  async function rebuildPreview(scrollTo) {
+    const iframe = $('#previewFrame');
+    if (!iframe) return;
+
+    // Cache stylesheets and renderer once
+    if (!cachedStyles) {
+      try {
+        const r = await fetch('styles.css?v=' + Date.now());
+        cachedStyles = await r.text();
+      } catch { cachedStyles = ''; }
+    }
+    if (!cachedScript) {
+      try {
+        const r = await fetch('script.js?v=' + Date.now());
+        cachedScript = await r.text();
+      } catch { cachedScript = ''; }
+    }
+
+    // Snapshot of content for the iframe
+    const json = JSON.stringify(content);
+
+    const html = `<!doctype html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Preview</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>${cachedStyles}
+[data-block]{position:relative;outline:2px solid transparent;outline-offset:-2px;cursor:pointer;transition:outline-color .15s}
+[data-block]:hover{outline-color:rgba(30,64,175,.35)}
+[data-block].is-active-block{outline-color:#1e40af!important;outline-style:dashed;outline-width:3px}
+[data-block].is-active-block::before{content:attr(data-block);position:absolute;top:8px;left:8px;background:#1e40af;color:#fff;font:600 11px/1 Inter,sans-serif;padding:5px 9px;border-radius:6px;text-transform:uppercase;letter-spacing:.04em;z-index:1000;pointer-events:none;box-shadow:0 4px 12px rgba(0,0,0,.15)}
+html{scroll-behavior:smooth}
+</style>
+</head>
+<body>
+<div id="app"><div class="loading-screen"><div class="loading-spinner"></div></div></div>
+<script>
+// Inline content — applied SYNCHRONOUSLY before script.js runs
+(function() {
+  const _origFetch = window.fetch;
+  const _content = ${json};
+  window.fetch = function(u) {
+    if (typeof u === 'string' && u.indexOf('content.json') === 0) {
+      return Promise.resolve({
+        ok: true, status: 200,
+        json: () => Promise.resolve(_content),
+        text: () => Promise.resolve(JSON.stringify(_content))
+      });
+    }
+    return _origFetch.apply(this, arguments);
+  };
+})();
+</${'script'}>
+<script>${cachedScript}</${'script'}>
+<script>
+// Click-to-select bridge to parent admin
+document.addEventListener('click', (e) => {
+  const blk = e.target.closest('[data-block]');
+  if (!blk) return;
+  // Allow links/buttons inside to still work in preview? No — block them, preview is read-only.
+  e.preventDefault(); e.stopPropagation();
+  parent.postMessage({ type: 'block-click', key: blk.dataset.block }, '*');
+}, true);
+window.addEventListener('message', (e) => {
+  if (e.data?.type === 'highlight') {
+    document.querySelectorAll('[data-block]').forEach(el => el.classList.toggle('is-active-block', el.dataset.block === e.data.key));
+    if (e.data.scroll) {
+      const el = document.querySelector('[data-block="' + e.data.key + '"]');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
+});
+parent.postMessage({ type: 'preview-ready' }, '*');
+</${'script'}>
+</body></html>`;
+
+    iframe.srcdoc = html;
+    if (scrollTo) {
+      iframe.addEventListener('load', () => {
+        setTimeout(() => iframe.contentWindow?.postMessage({ type: 'highlight', key: scrollTo, scroll: true }, '*'), 250);
+      }, { once: true });
+    }
+  }
+
+  function schedulePreviewRebuild(scrollTo) {
+    clearTimeout(previewRebuildTimer);
+    previewRebuildTimer = setTimeout(() => rebuildPreview(scrollTo), 350);
+  }
+
+  function highlightInPreview(key, scroll = false) {
+    const iframe = $('#previewFrame');
+    iframe?.contentWindow?.postMessage({ type: 'highlight', key, scroll }, '*');
+  }
+
+  function bindPreviewControls() {
+    if (window.__previewBound) return;
+    window.__previewBound = true;
+
+    // Listen to preview messages
+    window.addEventListener('message', (e) => {
+      if (e.data?.type === 'block-click') {
+        if (content.blocks?.[e.data.key]) selectBlock(e.data.key);
+      }
+      if (e.data?.type === 'preview-ready' && activeBlock) {
+        highlightInPreview(activeBlock);
+      }
+    });
+
+    // Device size buttons
+    $('.preview__devices')?.addEventListener('click', (e) => {
+      const btn = e.target.closest('.preview__device');
+      if (!btn) return;
+      $$('.preview__device').forEach(b => b.classList.remove('is-active'));
+      btn.classList.add('is-active');
+      const w = btn.dataset.w;
+      const frame = $('#previewFrame');
+      if (w) {
+        frame.style.width = w + 'px';
+        frame.style.maxWidth = w + 'px';
+        frame.classList.add('preview__frame--fixed');
+      } else {
+        frame.style.width = '';
+        frame.style.maxWidth = '';
+        frame.classList.remove('preview__frame--fixed');
+      }
+    });
+
+    $('#refreshPreviewBtn')?.addEventListener('click', () => rebuildPreview(activeBlock));
+  }
+  const $$ = (s, p = document) => p.querySelectorAll(s);
 
   function renderBlockList() {
     blockList.innerHTML = '';
@@ -441,6 +580,7 @@
         e.stopPropagation();
         blocks[key].enabled = !blocks[key].enabled;
         renderBlockList();
+        schedulePreviewRebuild(activeBlock);
       });
 
       // drag
@@ -451,6 +591,7 @@
         [...blockList.children].forEach((el, idx) => {
           if (content.blocks[el.dataset.key]) content.blocks[el.dataset.key].order = idx + 1;
         });
+        schedulePreviewRebuild(activeBlock);
       });
 
       blockList.appendChild(li);
@@ -496,6 +637,7 @@
     siteFields.querySelectorAll('input').forEach(inp => {
       inp.addEventListener('input', () => {
         content.site[inp.dataset.site] = inp.value;
+        schedulePreviewRebuild(activeBlock);
       });
     });
   }
@@ -504,6 +646,7 @@
     activeBlock = key;
     [...blockList.children].forEach(li => li.classList.toggle('active', li.dataset.key === key));
     renderEditor(key);
+    highlightInPreview(key, true);
   }
 
   // ============ EDITOR PANELS ============
@@ -566,7 +709,10 @@
 
   function bindFields() {
     editorPanel.querySelectorAll('[data-path]').forEach(el => {
-      el.addEventListener('input', () => setByPath(content, el.dataset.path, el.value));
+      el.addEventListener('input', () => {
+        setByPath(content, el.dataset.path, el.value);
+        schedulePreviewRebuild(activeBlock);
+      });
     });
   }
 
@@ -1019,6 +1165,7 @@
 
   function rerenderActive() {
     if (activeBlock) renderEditor(activeBlock);
+    schedulePreviewRebuild(activeBlock);
   }
 
   // ============ TOAST ============

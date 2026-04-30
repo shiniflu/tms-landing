@@ -69,23 +69,42 @@
     </div>
   </header>
 
-  <div class="layout">
+  <div class="layout layout--3col">
     <!-- SIDEBAR: блоки -->
     <aside class="sidebar">
       <h3>Блоки страницы</h3>
-      <p class="sidebar__hint">Перетаскивайте, чтобы менять порядок. Тоггл — скрыть/показать на сайте.</p>
+      <p class="sidebar__hint">Перетащите, чтобы поменять порядок. Тоггл — скрыть на сайте. Клик — редактировать.</p>
       <ul class="block-list" id="blockList"></ul>
 
       <h3 style="margin-top:24px">Настройки сайта</h3>
       <div id="siteFields" class="site-fields"></div>
     </aside>
 
-    <!-- MAIN: редактор выбранного блока -->
+    <!-- CENTER: live preview -->
+    <section class="preview" id="previewPane">
+      <div class="preview__bar">
+        <div class="preview__devices" role="tablist" aria-label="Размер экрана">
+          <button class="preview__device is-active" data-w="" title="Адаптивно">↔ Авто</button>
+          <button class="preview__device" data-w="1280" title="Десктоп">🖥 1280</button>
+          <button class="preview__device" data-w="768" title="Планшет">📱 768</button>
+          <button class="preview__device" data-w="380" title="Телефон">📲 380</button>
+        </div>
+        <div class="preview__bar-right">
+          <span class="preview__hint" id="previewHint">Клик по блоку — открыть в редакторе</span>
+          <button class="btn btn--ghost btn--sm" id="refreshPreviewBtn" title="Обновить превью">↻</button>
+        </div>
+      </div>
+      <div class="preview__frame-wrap">
+        <iframe id="previewFrame" class="preview__frame" title="Live preview"></iframe>
+      </div>
+    </section>
+
+    <!-- RIGHT: редактор выбранного блока -->
     <main class="main">
       <div id="editorPanel" class="panel">
         <div class="panel__empty">
-          <h2>Выберите блок слева</h2>
-          <p>Нажмите на блок, чтобы редактировать его содержимое.</p>
+          <h2>Выберите блок</h2>
+          <p>Кликните блок в превью или в списке слева, чтобы редактировать.</p>
         </div>
       </div>
     </main>
